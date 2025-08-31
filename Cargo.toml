@@ -1,6 +1,11 @@
 [package]
-name = "Rserver"
+name = "rserver"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+rustls = "0.21"
+rustls-pemfile = "1.0"
+webpki-roots = "0.25"
+tokio-rustls = "0.24"
+tokio = { version = "1", features = ["full"] }
