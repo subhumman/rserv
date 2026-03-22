@@ -1,5 +1,62 @@
-ПУСТУЕТ ТРОН
-Я ВЫГЛЯЖУ КАК САМЫЙ ОТВРАТИТЕЛЬНЫЙ КОРОЛЬ
-НА ТВОЕЙ ПАРЕ КРОВЬ ЭТО САМЫЙ УЖАСНЫЙ СОН
-САМЫЙ УЖАСНЫЙ ЗАМОК В КОТОРОМ Я ОДИНОК
-РЫЦАРИ НЕ ЧУВСТВУЮТ БОЛЬ Я БОЮСЬ СМОТРЕТЬ В КОРИДОР
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 | Страница не найдена</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1c;
+            --text-secondary: #a0a0a0;
+            --accent: #f18dae; /* Пастельный розовый для ошибки */
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: #e0e0e0;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .error-code {
+            font-size: 8rem;
+            font-weight: 800;
+            color: rgba(255, 255, 255, 0.03);
+            position: absolute;
+            z-index: -1;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        p {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .back-link {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border 0.3s;
+        }
+
+        .back-link:hover {
+            border-bottom: 1px solid var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="error-code">404</div>
+    <h2>Страница утеряна в облаке</h2>
+    <p>ИИ просканировал все сектора, но ничего не нашел.</p>
+    <a href="/" class="back-link">Вернуться в систему →</a>
+</body>
+</html>

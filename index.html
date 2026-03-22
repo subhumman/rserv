@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexiGuard AI | Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-bg: #1c1c1e;
+            --input-bg: #252527;
+            --text-primary: #f0f0f2;
+            --text-secondary: #8e8e93;
+            --accent: #9d8df1; 
+            --accent-error: #f18dae;
+            --border: #2c2c2e;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 800px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 28px;
+            padding: 40px;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .logo { font-weight: 800; color: var(--accent); font-size: 1.4rem; }
+        
+        .status-pill {
+            background: rgba(157, 141, 241, 0.1);
+            color: var(--accent);
+            padding: 6px 14px;
+            border-radius: 100px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pulse { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; animation: blink 2s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .form-group { margin-bottom: 24px; }
+        label { display: block; color: var(--text-secondary); margin-bottom: 8px; font-size: 0.9rem; }
+
+        input, textarea, select {
+            width: 100%;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+            color: var(--text-primary);
+            box-sizing: border-box;
+            outline: none;
+            transition: border 0.3s;
+        }
+
+        input:focus, textarea:focus { border-color: var(--accent); }
+
+        .button-group {
+            display: flex;
+            gap: 16px;
+            margin-top: 32px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 16px;
+            border-radius: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .btn-primary { background: var(--accent); color: #121214; }
+        .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+        .btn:hover { transform: translateY(-2px); opacity: 0.9; }
+
+        #audit-result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.02);
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <header>
+        <div class="logo">LexiGuard AI</div>
+        <div class="status-pill"><div class="pulse"></div> TLS 1.3 Secure</div>
+    </header>
+
+    <div class="form-group">
+        <label>Контрагент (Наименование/ИНН)</label>
+        <input type="text" placeholder="ООО 'Вектор' или 7701234567">
+    </div>
+
+    <div class="form-group">
+        <label>Тип документа</label>
+        <select>
+            <option>Договор оказания услуг</option>
+            <option>NDA (Соглашение о неразглашении)</option>
+            <option>Трудовой договор</option>
+            <option>Лицензионное соглашение</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Текст документа для анализа</label>
+        <textarea id="doc-text" rows="6" placeholder="Вставьте текст договора здесь..."></textarea>
+    </div>
+
+    <div id="audit-result"></div>
+
+    <div class="button-group">
+        <button onclick="runAudit()" class="btn btn-primary">Запустить ИИ-аудит</button>
+        <a href="/download-report" class="btn btn-secondary">Скачать PDF (v1.0)</a>
+    </div>
+</div>
+
+<script>
+    async function runAudit() {
+        const resultBox = document.getElementById('audit-result');
+        const docText = document.getElementById('doc-text').value;
+
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = '<p style="color: var(--accent)">⏳ Соединение с Rust-сервером... Анализ паттернов...</p>';
+
+        try {
+            const response = await fetch('/api/audit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    document_text: docText || "Пустой документ",
+                    analysis_depth: "deep"
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                resultBox.innerHTML = `
+                    <h3 style="margin-top:0; color: var(--accent)">Результат анализа</h3>
+                    <p><b>Оценка риска:</b> ${data.risk_score}/100</p>
+                    <p><b>Критичность:</b> ${data.risk_score > 50 ? 'Высокая' : 'Низкая'}</p>
+                    <ul style="padding-left: 20px; color: var(--text-secondary)">
+                        ${data.findings.map(f => `<li>${f}</li>`).join('')}
+                    </ul>
+                    <hr style="border:0; border-top:1px solid var(--border); margin:15px 0;">
+                    <p style="font-style: italic; font-size:0.9rem">🤖 AI Suggestion: ${data.ai_suggestion}</p>
+                `;
+            } else {
+                resultBox.innerHTML = '<p style="color: var(--accent-error)">Ошибка сервера при обработке запроса.</p>';
+            }
+        } catch (e) {
+            resultBox.innerHTML = '<p style="color: var(--accent-error)">Не удалось связаться с API. Проверьте TLS-сертификат.</p>';
+        }
+    }
+</script>
+
+</body>
+</html>

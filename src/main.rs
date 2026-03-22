@@ -1,166 +1,134 @@
-use rserver::{ThreadPool, ConnectionTracker, load_ssl_certs};
+use rserver::{load_ssl_certs, ConnectionTracker, ThreadPool, AuditRequest, AuditResponse};
 use std::{
-    fs,
-    io::{BufReader, prelude::*},
+    env, fs,
+    io::{self, prelude::*, BufReader},
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
     time::Duration,
-    env,
 };
-
 fn main() {
-    // проверяет аргументы командной строки
     let args: Vec<String> = env::args().collect();
-    let use_https = args.contains(&"--https".to_string()) || args.contains(&"-s".to_string());
+    let use_https = args.iter().any(|arg| arg == "--https" || arg == "-s");
+
     if use_https {
         run_https_server();
-    }else{
-        println!("а вот http прописывать снова мне как то стало не очень вкусно, вот вам вместо этого кайф: ПУСТУЕТ ТРОН,
-        Я ВЫГЛЯЖУ КАК САМЫЙ ОТВРАТИТЕЛЬНЫЙ КОРОЛЬ,
-        НА ТВОЕЙ ПАРЕ КРОВЬ, ЭТО САМЫЙ УЖАСНЫЙ СОН,
-        САМЫЙ УЖАСНЫЙ ЗАМОК В КОТОРОМ Я ОДИНОК,
-        РЫЙАРИ НЕ ЧУВСТВУЮТ БОЛЬ Я БОЮСЬ СМОТРЕТЬ В КОРИДОР");
+    } else {
+        println!("HTTP не настроен. Трон пустует, король в коридоре...");
     }
 }
 
-/// запускает https сервер
 fn run_https_server() {
-    println!("запуск https сервера...");
-    
-    // загружает ssl сертификаты
     let ssl_config = match load_ssl_certs() {
-        Ok(config) => {
-            println!("ssl сертификаты загружены успешно");
-            config
-        }
+        Ok(config) => Arc::new(config),
         Err(e) => {
-            eprintln!("ошибка загрузки ssl сертификатов: {}", e);
-            eprintln!("убедитесь, что файлы certs/key.pem и certs/cert.pem существуют");
-            eprintln!("запустите generate_cert.ps1 (windows) или generate_cert.sh (linux/macos)");
+            eprintln!("Критическая ошибка SSL: {}", e);
             return;
         }
     };
-    
-    let listener = TcpListener::bind("127.0.0.1:8443").unwrap();
-    
-    // создает пул из 4 потоков для обработки запросов
+
+    let listener = TcpListener::bind("0.0.0.0:8443").expect("Не удалось забиндить порт");
     let pool = ThreadPool::new(4);
-    
-    // создает трекер соединений для защиты от ddos
-    let connection_tracker = Arc::new(Mutex::new(ConnectionTracker::new()));
+    let tracker = Arc::new(Mutex::new(ConnectionTracker::new()));
 
-    println!("https сервер запущен на https://127.0.0.1:8443");
-    println!("защита от ddos активна");
-    println!("ssl/tls шифрование включено");
+    println!("HTTPS Server live on https://0.0.0.0:8443");
 
-    // обрабатывает входящие соединения
     for stream in listener.incoming() {
-        let stream = stream.unwrap();
-        let peer_addr = stream.peer_addr().unwrap();
-        
-        // клонирует трекер и ssl конфигурацию для передачи в поток
-        let tracker = Arc::clone(&connection_tracker);
-        let ssl_config = ssl_config.clone();
-        
-        pool.execute(move || {
-            // проверяет, не заблокирован ли ip
-            if {
-                let mut tracker = tracker.lock().unwrap();
-                tracker.is_ip_blocked(peer_addr)
-            } {
-                // отправляет ответ о блокировке
-                send_blocked_response(stream);
-                return;
-            }
-            
-            // проверяет, не превышает ли ip лимиты
-            if {
-                let mut tracker = tracker.lock().unwrap();
-                tracker.should_block_ip(peer_addr)
-            } {
-                // отправляет ответ о превышении лимитов
-                send_rate_limit_response(stream);
-                return;
-            }
-            
-            // обрабатывает https соединение
-            handle_https_connection(stream, ssl_config);
-        });
-    }
+        match stream {
+            Ok(stream) => {
+                let peer_addr = stream.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
+                let tracker_cloned: Arc<Mutex<ConnectionTracker>> = Arc::clone(&tracker);
+                let config_cloned = Arc::clone(&ssl_config);
 
-    println!("shutting down https server.");
+                pool.execute(move || {
+                    let is_blocked = {
+                        let mut t = tracker_cloned.lock().unwrap();
+                        t.is_ip_blocked(peer_addr) || t.should_block_ip(peer_addr)
+                    };
+
+                    if is_blocked {
+                        let _ = send_error_response(stream, "429 Too Many Requests");
+                        return;
+                    }
+
+                    handle_https_connection(stream, config_cloned);
+                });
+            }
+            Err(e) => eprintln!("Ошибка входящего соединения: {}", e),
+        }
+    }
 }
 
-/// обрабатывает https соединение
-fn handle_https_connection(mut stream: TcpStream, ssl_config: rustls::ServerConfig) {
-    use rustls::ServerConnection;
-    use std::io::Write;
-    use std::sync::Arc;
+fn send_error_response(mut stream: TcpStream, status: &str) -> io::Result<()> {
+    let response = format!("HTTP/1.1 {}\r\nContent-Length: 0\r\n\r\n", status);
+    stream.write_all(response.as_bytes())
+}
 
-    let config = Arc::new(ssl_config);
+fn handle_https_connection(mut stream: TcpStream, config: Arc<rustls::ServerConfig>) {
+    let mut conn = rustls::ServerConnection::new(config).unwrap();
+    let mut tls_stream = rustls::Stream::new(&mut conn, &mut stream);
     
-    // создает tls соединение
-    let mut tls_conn = match ServerConnection::new(config) {
-        Ok(conn) => conn,
-        Err(e) => {
-            eprintln!("ошибка создания tls соединения: {}", e);
-            return;
-        }
-    };
-
-    // правильно создает tls stream - передает mutable reference
-    let mut tls_stream = rustls::Stream::new(&mut tls_conn, &mut stream);
-
-    // читает запрос через tls
     let mut reader = BufReader::new(&mut tls_stream);
-    let mut request_line = String::new();
-    
-    if let Err(e) = reader.read_line(&mut request_line) {
-        eprintln!("ошибка чтения tls потока: {}", e);
-        return;
-    }
+    let mut first_line = String::new();
+    if reader.read_line(&mut first_line).is_err() { return; }
 
-    // обрабатывает запрос
-    let (status_line, filename) = match request_line.trim() {
-        "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "darkprince.html"),
-        "GET /sleep HTTP/1.1" => {
-            thread::sleep(Duration::from_secs(5));
-            ("HTTP/1.1 200 OK", "darkprince.html")
+    if first_line.starts_with("POST /api/audit") {
+        
+        let mut content_length = 0;
+        let mut line = String::new();
+        
+        while reader.read_line(&mut line).unwrap_or(0) > 2 {
+            if line.to_lowercase().starts_with("content-length:") {
+                content_length = line.split(':').nth(1).unwrap().trim().parse().unwrap_or(0);
+            }
+            line.clear();
         }
-        _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
-    };
 
-    let contents = fs::read_to_string(filename).unwrap_or_else(|_| {
-        "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\r\n".to_string()
-    });
-    let length = contents.len();
+        let mut buffer = vec![0; content_length];
+        reader.read_exact(&mut buffer).unwrap();
+        
+        let req_data: AuditRequest = serde_json::from_slice(&buffer).unwrap_or(AuditRequest {
+            document_text: "".into(),
+            analysis_depth: "fast".into(),
+        });
 
-    let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
+        // имитация AI-ответа
+        let response_data = AuditResponse { 
+            status: "success".into(),
+            risk_score: 15,
+            findings: vec![
+                "Найдена опечатка в реквизитах".into(),
+                "Срок оплаты превышает 30 дней".into(),
+            ],
+            ai_suggestion: "Рекомендуется добавить пункт о форс-мажоре в условиях санкций 2026 года.".into(),
+        };
 
-    // пишет ответ через tls
-    if let Err(e) = tls_stream.write_all(response.as_bytes()) {
-        eprintln!("ошибка записи в tls поток: {}", e);
-    }
-    
-    // явно закрывает соединение
-    let _ = tls_stream.flush();
-}
+        let json_response = serde_json::to_string(&response_data).unwrap();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            json_response.len(),
+            json_response
+        );
+        let _ = tls_stream.write_all(response.as_bytes());
+        let _ = tls_stream.flush();   
 
-/// отправляет ответ о блокировке ip
-fn send_blocked_response(mut stream: TcpStream) {
-    let response = "HTTP/1.1 429 Too Many Requests\r\n\
-                   Content-Length: 0\r\n\
-                   Retry-After: 300\r\n\
-                   \r\n";
-    let _ = stream.write_all(response.as_bytes());
-}
+    } else {
+        
+        let request_line = first_line.trim();
 
-/// отправляет ответ о превышении лимитов
-fn send_rate_limit_response(mut stream: TcpStream) {
-    let response = "HTTP/1.1 429 Too Many Requests\r\n\
-                   Content-Length: 0\r\n\
-                   Retry-After: 60\r\n\
-                   \r\n";
-    let _ = stream.write_all(response.as_bytes());
+        let (status, file) = match request_line {
+            "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "index.html"),
+            "GET /sleep HTTP/1.1" => {
+                thread::sleep(Duration::from_secs(2));
+                ("HTTP/1.1 200 OK", "index.html")
+            }
+            _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
+        };
+
+        let contents = fs::read_to_string(file).unwrap_or_else(|_| "Error".to_string());
+        let response = format!("{}\r\nContent-Length: {}\r\n\r\n{}", status, contents.len(), contents);
+        
+        let _ = tls_stream.write_all(response.as_bytes());
+        let _ = tls_stream.flush();
+    }  
 }
