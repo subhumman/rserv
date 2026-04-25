@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use rustls_pemfile::{certs, pkcs8_private_keys};
 
-/// пул потоков.
-#[allow(dead_code)]
+pub mod grok_client;
+
+/// Thread pool for handling concurrent connections.
 pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: Option<mpsc::Sender<Job>>,
@@ -24,7 +25,7 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 #[derive(Deserialize)]
 pub struct AuditRequest {
     pub document_text: String,
-    pub analysis_depth: String, // "fast" или "deep"
+    pub analysis_depth: String, // "fast" or "deep"
 }
 
 #[derive(Serialize)]
@@ -56,7 +57,7 @@ impl ConnectionTracker {
 
     pub fn is_ip_blocked(&mut self, ip: SocketAddr) -> bool {
         let now = Instant::now();
-        // Очистка устаревших блокировок при каждой проверке
+        // Clean up expired blocks on each check
         self.blocked_ips.retain(|_, &mut blocked_until| now < blocked_until);
         self.blocked_ips.contains_key(&ip)
     }
@@ -86,7 +87,7 @@ pub fn load_ssl_certs() -> Result<ServerConfig, Box<dyn std::error::Error>> {
         .collect();
 
     if keys.is_empty() {
-        return Err("Приватный ключ не найден".into());
+        return Err("Private key not found".into());
     }
 
     let cert_file = File::open("certs/cert.pem")?;
@@ -97,7 +98,7 @@ pub fn load_ssl_certs() -> Result<ServerConfig, Box<dyn std::error::Error>> {
         .collect();
 
     if cert_chain.is_empty() {
-        return Err("Сертификат не найден".into());
+        return Err("Certificate not found".into());
     }
 
     let config = ServerConfig::builder()
@@ -128,7 +129,8 @@ impl ThreadPool {
     {
         let job = Box::new(f);
         if let Some(ref sender) = self.sender {
-            let _ = sender.send(job); // В проде лучше логировать ошибку отправки
+            // In production, better to log send errors
+            let _ = sender.send(job);
         }
     }
 }
