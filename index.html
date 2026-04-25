@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -117,30 +117,30 @@
     </header>
 
     <div class="form-group">
-        <label>Контрагент (Наименование/ИНН)</label>
-        <input type="text" placeholder="ООО 'Вектор' или 7701234567">
+        <label>Counterparty (Name/Tax ID)</label>
+        <input type="text" placeholder="Vector LLC or 7701234567">
     </div>
 
     <div class="form-group">
-        <label>Тип документа</label>
+        <label>Document Type</label>
         <select>
-            <option>Договор оказания услуг</option>
-            <option>NDA (Соглашение о неразглашении)</option>
-            <option>Трудовой договор</option>
-            <option>Лицензионное соглашение</option>
+            <option>Service Agreement</option>
+            <option>NDA (Non-Disclosure Agreement)</option>
+            <option>Employment Contract</option>
+            <option>License Agreement</option>
         </select>
     </div>
 
     <div class="form-group">
-        <label>Текст документа для анализа</label>
-        <textarea id="doc-text" rows="6" placeholder="Вставьте текст договора здесь..."></textarea>
+        <label>Document Text for Analysis</label>
+        <textarea id="doc-text" rows="6" placeholder="Paste contract text here..."></textarea>
     </div>
 
     <div id="audit-result"></div>
 
     <div class="button-group">
-        <button onclick="runAudit()" class="btn btn-primary">Запустить ИИ-аудит</button>
-        <a href="/download-report" class="btn btn-secondary">Скачать PDF (v1.0)</a>
+        <button onclick="runAudit()" class="btn btn-primary">Run AI Audit</button>
+        <a href="/download-report" class="btn btn-secondary">Download PDF (v1.0)</a>
     </div>
 </div>
 
@@ -150,14 +150,14 @@
         const docText = document.getElementById('doc-text').value;
 
         resultBox.style.display = 'block';
-        resultBox.innerHTML = '<p style="color: var(--accent)">⏳ Соединение с Rust-сервером... Анализ паттернов...</p>';
+        resultBox.innerHTML = '<p style="color: var(--accent)">⏳ Connecting to Rust server... Analyzing patterns...</p>';
 
         try {
             const response = await fetch('/api/audit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    document_text: docText || "Пустой документ",
+                    document_text: docText || "Empty document",
                     analysis_depth: "deep"
                 })
             });
@@ -165,9 +165,9 @@
             if (response.ok) {
                 const data = await response.json();
                 resultBox.innerHTML = `
-                    <h3 style="margin-top:0; color: var(--accent)">Результат анализа</h3>
-                    <p><b>Оценка риска:</b> ${data.risk_score}/100</p>
-                    <p><b>Критичность:</b> ${data.risk_score > 50 ? 'Высокая' : 'Низкая'}</p>
+                    <h3 style="margin-top:0; color: var(--accent)">Analysis Results</h3>
+                    <p><b>Risk Score:</b> ${data.risk_score}/100</p>
+                    <p><b>Severity:</b> ${data.risk_score > 50 ? 'High' : 'Low'}</p>
                     <ul style="padding-left: 20px; color: var(--text-secondary)">
                         ${data.findings.map(f => `<li>${f}</li>`).join('')}
                     </ul>
@@ -175,10 +175,10 @@
                     <p style="font-style: italic; font-size:0.9rem">🤖 AI Suggestion: ${data.ai_suggestion}</p>
                 `;
             } else {
-                resultBox.innerHTML = '<p style="color: var(--accent-error)">Ошибка сервера при обработке запроса.</p>';
+                resultBox.innerHTML = '<p style="color: var(--accent-error)">Server error while processing request.</p>';
             }
         } catch (e) {
-            resultBox.innerHTML = '<p style="color: var(--accent-error)">Не удалось связаться с API. Проверьте TLS-сертификат.</p>';
+            resultBox.innerHTML = '<p style="color: var(--accent-error)">Failed to connect to API. Check TLS certificate.</p>';
         }
     }
 </script>
